@@ -9,6 +9,10 @@ import DepositModule from './components/DepositModule';
 import WithdrawalModule from './components/WithdrawalModule';
 import TransferModule from './components/TransferModule';
 import InvestmentModule from './components/InvestmentModule';
+import HistoryModule from './components/HistoryModule';
+import SignalModule from './components/SignalModule';
+import SettingsModule from './components/SettingsModule';
+import MarketModule from './components/MarketModule';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import LiveTradeFeed from './components/LiveTradeFeed';
@@ -108,21 +112,53 @@ const DashboardChart = () => {
 type ViewState = 'LANDING' | 'AUTH' | 'APP';
 
 export default function App() {
-  const [viewState, setViewState] = useState<ViewState>('LANDING');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentView, setCurrentView] = useState<View>('DASHBOARD');
+  const [viewState, setViewState] = useState<ViewState>(() => {
+      return (localStorage.getItem('viewState') as ViewState) || 'LANDING';
+  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+      const savedUser = localStorage.getItem('currentUser');
+      return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [currentView, setCurrentView] = useState<View>(() => {
+      const saved = localStorage.getItem('currentView');
+      return (saved as View) || 'DASHBOARD';
+  });
 
   // Refresh user data if logged in
   useEffect(() => {
     if (currentUser) {
        refreshData();
+       // Poll for updates every 3 seconds to keep user dashboard in sync with admin actions
+       const interval = setInterval(refreshData, 3000);
+       return () => clearInterval(interval);
     }
-  }, []);
+  }, [currentUser?.id]); // Depend on ID to restart if user changes
+
+  useEffect(() => {
+      localStorage.setItem('viewState', viewState);
+  }, [viewState]);
+
+  useEffect(() => {
+      if (currentUser) {
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      } else {
+          localStorage.removeItem('currentUser');
+      }
+  }, [currentUser]);
+
+  useEffect(() => {
+      if (currentView) {
+          localStorage.setItem('currentView', currentView);
+      }
+  }, [currentView]);
 
   const refreshData = () => {
     if (currentUser) {
       const updated = getUser(currentUser.id);
-      if (updated) setCurrentUser({...updated});
+      // Only update if there are actual changes to avoid unnecessary re-renders
+      if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
+          setCurrentUser({...updated});
+      }
     }
   };
 
@@ -140,6 +176,14 @@ export default function App() {
   const handleBackToLanding = () => {
     setViewState('LANDING');
   }
+
+  const handleLogout = () => {
+      setCurrentUser(null);
+      setViewState('LANDING');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('viewState');
+      localStorage.removeItem('currentView');
+  };
 
   if (viewState === 'LANDING') {
     return <LandingPage onEnter={handleAuthNavigation} />;
@@ -256,19 +300,6 @@ export default function App() {
                         <LiveTradeFeed />
                     </div>
                 </div>
-
-                {/* Chat Widget Mock */}
-                <div className="fixed bottom-6 right-6 flex items-center gap-2 z-50">
-                    <button className="bg-white text-black px-4 py-2 rounded-full font-medium shadow-lg hover:bg-gray-100 transition flex items-center gap-2">
-                        Chat with us <span className="text-xl">👋</span>
-                    </button>
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg relative">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full border-2 border-[#0b1120]">1</span>
-                    </div>
-                </div>
             </div>
           </div>
         );
@@ -284,8 +315,16 @@ export default function App() {
         return <WithdrawalModule user={currentUser} refreshUser={refreshData} />;
       case 'TRANSFER':
         return <TransferModule user={currentUser} refreshUser={refreshData} />;
+      case 'MARKET':
+        return <MarketModule user={currentUser} refreshUser={refreshData} />;
       case 'INVESTMENT':
         return <InvestmentModule user={currentUser} refreshUser={refreshData} />;
+      case 'HISTORY':
+        return <HistoryModule user={currentUser} refreshUser={refreshData} />;
+      case 'SIGNAL':
+        return <SignalModule user={currentUser} refreshUser={refreshData} />;
+      case 'SETTINGS':
+        return <SettingsModule user={currentUser} refreshUser={refreshData} />;
       case 'ADMIN':
         if (currentUser.role !== 'ADMIN') return <div>Access Denied</div>;
         return <AdminPanel />;
@@ -305,6 +344,7 @@ export default function App() {
       currentView={currentView} 
       setCurrentView={setCurrentView}
       currentUser={currentUser}
+      onLogout={handleLogout}
     >
       {renderContent()}
     </DashboardLayout>

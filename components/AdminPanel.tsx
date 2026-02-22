@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, adminAdjustFunds, updateKYCStatus, toggleUserStatus, getPendingTransactions, processTransaction, getSupportLogs, getDepositAddresses, updateDepositAddress } from '../services/mockBackend';
-import { User, WalletType, KYCStatus, AccountStatus, Transaction } from '../types';
-import { Shield, Check, X, Users, DollarSign, MessageSquare, AlertTriangle, Lock, Unlock, Power, ArrowRight, ArrowDownLeft, ArrowUpRight, RotateCcw, FileText, Calendar, MapPin, CreditCard, User as UserIcon, Eye, Briefcase, Wallet, Mail, Phone, Settings, Save } from 'lucide-react';
+import { getAllUsers, adminAdjustFunds, updateKYCStatus, toggleUserStatus, getPendingTransactions, processTransaction, getSupportLogs, getDepositAddresses, updateDepositAddress, adminGetChatSessions, adminReplyToChat } from '../services/mockBackend';
+import { User, WalletType, KYCStatus, AccountStatus, Transaction, ChatSession } from '../types';
+import { Shield, Check, X, Users, DollarSign, MessageSquare, AlertTriangle, Lock, Unlock, Power, ArrowRight, ArrowDownLeft, ArrowUpRight, RotateCcw, FileText, Calendar, MapPin, CreditCard, User as UserIcon, Eye, Briefcase, Wallet, Mail, Phone, Settings, Save, Send } from 'lucide-react';
 
 const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'USERS' | 'FINANCE' | 'LOGS' | 'KYC' | 'SETTINGS'>('USERS');
   const [users, setUsers] = useState<User[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [selectedChat, setSelectedChat] = useState<ChatSession | null>(null);
+  const [adminReply, setAdminReply] = useState('');
   
   const [message, setMessage] = useState<string>('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -25,13 +28,42 @@ const AdminPanel: React.FC = () => {
   const [adminAddresses, setAdminAddresses] = useState(getDepositAddresses());
 
   useEffect(() => {
-    setUsers(getAllUsers().filter(u => u.role === 'USER'));
-    setTransactions(getPendingTransactions());
-    setLogs(getSupportLogs());
-    setAdminAddresses(getDepositAddresses());
+    const fetchData = () => {
+        setUsers(getAllUsers().filter(u => u.role === 'USER'));
+        setTransactions(getPendingTransactions());
+        setLogs(getSupportLogs());
+        setAdminAddresses(getDepositAddresses());
+        setChatSessions(adminGetChatSessions());
+    };
+
+    fetchData(); // Initial fetch
+
+    // Poll for updates every 2 seconds to catch new users/actions
+    const interval = setInterval(fetchData, 2000);
+
+    return () => clearInterval(interval);
   }, [refreshTrigger, activeTab]);
 
-  const refreshData = () => setRefreshTrigger(prev => prev + 1);
+  const refreshData = () => {
+      setRefreshTrigger(prev => prev + 1);
+      // Force update users list directly just in case
+      setUsers(getAllUsers().filter(u => u.role === 'USER'));
+  };
+
+  const handleAdminReply = () => {
+    if (!selectedChat || !adminReply.trim()) return;
+    try {
+        adminReplyToChat(selectedChat.userId, adminReply);
+        setAdminReply('');
+        refreshData();
+        // Update local selected chat to reflect new message immediately
+        const updatedSessions = adminGetChatSessions();
+        const updatedChat = updatedSessions.find(s => s.userId === selectedChat.userId);
+        if (updatedChat) setSelectedChat(updatedChat);
+    } catch (e) {
+        showMessage("Failed to send reply");
+    }
+  };
 
   const showMessage = (msg: string) => {
     setMessage(msg);
@@ -101,11 +133,20 @@ const AdminPanel: React.FC = () => {
             <p className="text-gray-400 text-sm">System Administration & Override Console</p>
         </div>
         
-        {message && (
-          <div className="bg-cyber-accent/10 text-cyber-accent px-4 py-2 rounded border border-cyber-accent/50 animate-pulse flex items-center gap-2">
-            <Check size={16} /> {message}
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+            <button 
+                onClick={refreshData}
+                className="p-2 bg-cyber-dark hover:bg-cyber-accent/10 border border-cyber-border hover:border-cyber-accent text-gray-400 hover:text-cyber-accent rounded-lg transition"
+                title="Refresh Data"
+            >
+                <RotateCcw size={18} />
+            </button>
+            {message && (
+            <div className="bg-cyber-accent/10 text-cyber-accent px-4 py-2 rounded border border-cyber-accent/50 animate-pulse flex items-center gap-2">
+                <Check size={16} /> {message}
+            </div>
+            )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -135,6 +176,13 @@ const AdminPanel: React.FC = () => {
             className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'LOGS' ? 'text-cyber-accent border-b-2 border-cyber-accent' : 'text-gray-400 hover:text-white'}`}
           >
             <MessageSquare size={16} /> Comms & Logs
+          </button>
+          <button 
+            onClick={() => setActiveTab('CHAT')}
+            className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'CHAT' ? 'text-cyber-accent border-b-2 border-cyber-accent' : 'text-gray-400 hover:text-white'}`}
+          >
+            <MessageSquare size={16} /> Support Chat
+            {chatSessions.filter(s => s.status === 'ESCALATED').length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{chatSessions.filter(s => s.status === 'ESCALATED').length}</span>}
           </button>
           <button 
             onClick={() => setActiveTab('SETTINGS')}
@@ -432,6 +480,119 @@ const AdminPanel: React.FC = () => {
           </div>
       )}
 
+      {/* SUPPORT CHAT TAB */}
+      {activeTab === 'CHAT' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[600px] animate-in fade-in slide-in-from-bottom-4">
+              {/* Chat List */}
+              <div className="bg-cyber-card border border-cyber-border rounded-xl overflow-hidden flex flex-col">
+                  <div className="p-4 border-b border-cyber-border bg-cyber-dark">
+                      <h3 className="font-bold text-white flex items-center gap-2">
+                          <MessageSquare size={18} className="text-cyber-accent" /> Active Sessions
+                      </h3>
+                  </div>
+                  <div className="flex-1 overflow-y-auto divide-y divide-cyber-border">
+                      {chatSessions.length === 0 ? (
+                          <div className="p-8 text-center text-gray-500">No active chats.</div>
+                      ) : (
+                          chatSessions.map(session => (
+                              <div 
+                                  key={session.userId} 
+                                  onClick={() => setSelectedChat(session)}
+                                  className={`p-4 cursor-pointer hover:bg-white/5 transition ${selectedChat?.userId === session.userId ? 'bg-white/10 border-l-4 border-cyber-accent' : ''}`}
+                              >
+                                  <div className="flex justify-between items-start mb-1">
+                                      <span className="font-bold text-white text-sm">{session.userName}</span>
+                                      <span className="text-[10px] text-gray-500">{new Date(session.lastMessageAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                      <p className="text-xs text-gray-400 truncate max-w-[150px]">
+                                          {session.messages[session.messages.length - 1]?.message}
+                                      </p>
+                                      {session.status === 'ESCALATED' && (
+                                          <span className="bg-red-500 text-white text-[10px] px-1.5 rounded font-bold">ISSUE</span>
+                                      )}
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+
+              {/* Chat Window */}
+              <div className="md:col-span-2 bg-cyber-card border border-cyber-border rounded-xl overflow-hidden flex flex-col">
+                  {selectedChat ? (
+                      <>
+                          <div className="p-4 border-b border-cyber-border bg-cyber-dark flex justify-between items-center">
+                              <div>
+                                  <h3 className="font-bold text-white">{selectedChat.userName}</h3>
+                                  <p className="text-xs text-gray-400">User ID: {selectedChat.userId}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-1 rounded text-xs font-bold ${selectedChat.status === 'ESCALATED' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                                      {selectedChat.status}
+                                  </span>
+                              </div>
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/20">
+                              {selectedChat.messages.map((msg, idx) => (
+                                  <div key={idx} className={`flex ${msg.senderId === 'ADMIN' ? 'justify-end' : 'justify-start'}`}>
+                                      <div className={`max-w-[80%] rounded-2xl p-3 ${
+                                          msg.senderId === 'ADMIN' 
+                                              ? 'bg-cyber-accent text-cyber-dark rounded-tr-none' 
+                                              : msg.senderId === 'BOT'
+                                                  ? 'bg-gray-700 text-gray-300 rounded-tl-none border border-gray-600'
+                                                  : 'bg-cyber-dark border border-cyber-border text-white rounded-tl-none'
+                                      }`}>
+                                          <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-[10px] opacity-70 uppercase font-bold">
+                                                  {msg.senderId === 'ADMIN' ? 'You' : msg.senderId}
+                                              </span>
+                                              <span className="text-[10px] opacity-50">
+                                                  {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                              </span>
+                                          </div>
+                                          <p className="text-sm">{msg.message}</p>
+                                          {msg.isIssue && (
+                                              <div className="mt-2 flex items-center gap-1 text-[10px] text-red-400 bg-red-900/20 px-2 py-1 rounded border border-red-900/30">
+                                                  <AlertTriangle size={10} /> Reported Issue
+                                              </div>
+                                          )}
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+
+                          <div className="p-4 border-t border-cyber-border bg-cyber-dark">
+                              <div className="flex gap-2">
+                                  <input
+                                      type="text"
+                                      value={adminReply}
+                                      onChange={(e) => setAdminReply(e.target.value)}
+                                      onKeyDown={(e) => e.key === 'Enter' && handleAdminReply()}
+                                      placeholder="Type your reply..."
+                                      className="flex-1 bg-black/30 border border-cyber-border rounded px-4 py-2 text-sm text-white focus:border-cyber-accent outline-none"
+                                  />
+                                  <button 
+                                      onClick={handleAdminReply}
+                                      disabled={!adminReply.trim()}
+                                      className="bg-cyber-accent hover:bg-emerald-400 text-cyber-dark p-2 rounded transition disabled:opacity-50"
+                                  >
+                                      <Send size={18} />
+                                  </button>
+                              </div>
+                          </div>
+                      </>
+                  ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                          <MessageSquare size={48} className="mb-4 opacity-20" />
+                          <p>Select a chat session to view details.</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+      )}
+
       {/* LOGS TAB */}
       {activeTab === 'LOGS' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
@@ -442,12 +603,31 @@ const AdminPanel: React.FC = () => {
                           <div key={log.id} className="p-3 rounded bg-cyber-dark border border-cyber-border">
                               <div className="flex justify-between items-start mb-1">
                                   <span className="text-sm font-bold text-white">{log.user}</span>
-                                  <span className="text-xs text-gray-500">{log.time}</span>
+                                  <span className="text-xs text-gray-500">{new Date(log.time).toLocaleString()}</span>
                               </div>
                               <p className="text-sm text-gray-300">{log.msg}</p>
                               {log.type === 'ALERT' && (
                                   <div className="mt-2 flex items-center gap-1 text-xs text-yellow-500">
                                       <AlertTriangle size={12} /> System Flag
+                                  </div>
+                              )}
+                              {log.type === 'COMPLAINT' && (
+                                  <div className="mt-2 flex items-center justify-between">
+                                      <div className="flex items-center gap-1 text-xs text-red-500">
+                                          <AlertTriangle size={12} /> Escalated Issue
+                                      </div>
+                                      <button 
+                                          onClick={() => {
+                                              const session = chatSessions.find(s => s.userId === log.userId);
+                                              if (session) {
+                                                  setSelectedChat(session);
+                                                  setActiveTab('CHAT');
+                                              }
+                                          }}
+                                          className="text-xs bg-cyber-accent text-cyber-dark px-2 py-1 rounded hover:bg-emerald-400 transition font-bold"
+                                      >
+                                          Resolve in Chat
+                                      </button>
                                   </div>
                               )}
                           </div>

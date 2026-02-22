@@ -10,7 +10,7 @@ export const getMarketAnalysis = async (marketData: string) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-exp',
       contents: `You are a senior high-frequency trading analyst for an exclusive platform called ScalperHub. 
       Analyze the following market condition context and provide a short, punchy, "cyberpunk-style" trading signal (Bullish/Bearish) and a 1-sentence reasoning.
       

@@ -120,3 +120,33 @@ export type View =
   | 'HISTORY'
   | 'SIGNAL'
   | 'SETTINGS';
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  message: string;
+  timestamp: string;
+  type: 'USER' | 'BOT' | 'ADMIN';
+  isIssue?: boolean;
+}
+
+export interface ChatSession {
+  userId: string;
+  userName: string;
+  messages: ChatMessage[];
+  status: 'ACTIVE' | 'ESCALATED' | 'RESOLVED';
+  lastMessageAt: string;
+  hasUnreadAdminMessage: boolean;
+}
+
+export interface Signal {
+  id: string;
+  pair: string;
+  type: 'BUY' | 'SELL';
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  status: 'ACTIVE' | 'EXPIRED' | 'HIT_TP' | 'HIT_SL';
+  timestamp: string;
+  confidence: number; // 0-100%
+}

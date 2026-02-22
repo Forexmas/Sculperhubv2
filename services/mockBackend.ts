@@ -1,12 +1,36 @@
-import { User, KYCStatus, NFT, WalletType, Transaction, TransactionStatus, AccountStatus, UserInvestment } from '../types';
+import { User, KYCStatus, NFT, WalletType, Transaction, TransactionStatus, AccountStatus, UserInvestment, ChatSession, ChatMessage } from '../types';
+import { GoogleGenAI, Type } from "@google/genai";
 
 // --- MOCK DATABASE STATE ---
-let USERS: User[] = [
+const LOAD_FROM_STORAGE = <T>(key: string, defaultVal: T): T => {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : defaultVal;
+    } catch (e) {
+        return defaultVal;
+    }
+};
+
+const SAVE_TO_STORAGE = (key: string, val: any) => {
+    localStorage.setItem(key, JSON.stringify(val));
+};
+
+export interface SupportLog {
+    id: string;
+    userId: string;
+    user: string;
+    msg: string;
+    time: string;
+    type: 'COMPLAINT' | 'ALERT' | 'SUPPORT';
+}
+
+// Initial Data (Defaults)
+const DEFAULT_USERS: User[] = [
   {
     id: 'user-1',
     name: 'Alex Trader',
     email: 'alex@scalperhub.com',
-    password: 'password123', // Mock password
+    password: 'password123',
     role: 'USER',
     status: 'ACTIVE',
     withdrawal_password: '1234',
@@ -24,7 +48,7 @@ let USERS: User[] = [
     id: 'user-2',
     name: 'Sarah Whale',
     email: 'sarah@whale.capital',
-    password: 'password123', // Mock password
+    password: 'password123',
     role: 'USER',
     status: 'ACTIVE',
     withdrawal_password: '5678',
@@ -61,7 +85,7 @@ let USERS: User[] = [
     id: 'admin-1',
     name: 'Master Admin',
     email: 'admin@scalperhub.com',
-    password: 'admin', // Mock password
+    password: 'admin',
     role: 'ADMIN',
     status: 'ACTIVE',
     capital: 0,
@@ -76,7 +100,7 @@ let USERS: User[] = [
   }
 ];
 
-let TRANSACTIONS: Transaction[] = [
+const DEFAULT_TRANSACTIONS: Transaction[] = [
   {
     id: 'tx-1',
     userId: 'user-2',
@@ -98,6 +122,38 @@ let TRANSACTIONS: Transaction[] = [
     date: '2025-05-12 09:15'
   }
 ];
+
+// Load State
+let CHAT_SESSIONS: ChatSession[] = LOAD_FROM_STORAGE('DB_CHATS', []);
+let USERS: User[] = LOAD_FROM_STORAGE('DB_USERS', DEFAULT_USERS);
+let TRANSACTIONS: Transaction[] = LOAD_FROM_STORAGE('DB_TRANSACTIONS', DEFAULT_TRANSACTIONS);
+let SUPPORT_LOGS: SupportLog[] = LOAD_FROM_STORAGE('DB_LOGS', [
+    { id: 'log-1', userId: 'user-1', user: 'Alex Trader', msg: 'Why is my withdrawal pending?', time: new Date(Date.now() - 1000 * 60 * 10).toISOString(), type: 'COMPLAINT' },
+    { id: 'log-2', userId: 'system', user: 'System', msg: 'Bot #442 detected arbitrage attempt.', time: new Date(Date.now() - 1000 * 60 * 60).toISOString(), type: 'ALERT' },
+    { id: 'log-3', userId: 'user-2', user: 'Sarah Whale', msg: 'I cannot access my NFT gallery.', time: new Date(Date.now() - 1000 * 60 * 120).toISOString(), type: 'SUPPORT' },
+]);
+
+// Helper to persist changes
+const persistDB = () => {
+    SAVE_TO_STORAGE('DB_USERS', USERS);
+    SAVE_TO_STORAGE('DB_TRANSACTIONS', TRANSACTIONS);
+    SAVE_TO_STORAGE('DB_CHATS', CHAT_SESSIONS);
+    SAVE_TO_STORAGE('DB_LOGS', SUPPORT_LOGS);
+};
+
+// Force reload from storage (for polling across tabs)
+export const forceUpdate = () => {
+    USERS = LOAD_FROM_STORAGE('DB_USERS', DEFAULT_USERS);
+    TRANSACTIONS = LOAD_FROM_STORAGE('DB_TRANSACTIONS', DEFAULT_TRANSACTIONS);
+    CHAT_SESSIONS = LOAD_FROM_STORAGE('DB_CHATS', []);
+    SUPPORT_LOGS = LOAD_FROM_STORAGE('DB_LOGS', []);
+};
+
+// Initialize AI
+let ai: GoogleGenAI | null = null;
+if (process.env.GEMINI_API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+}
 
 // --- SYSTEM CONFIG ---
 let DEPOSIT_ADDRESSES = {
@@ -166,6 +222,7 @@ export const registerUser = (name: string, email: string, password: string): Use
     };
 
     USERS.push(newUser);
+    persistDB();
     return newUser;
 };
 
@@ -194,10 +251,12 @@ export const simulateTrade = (userId: string, amount: number): { success: boolea
     const profitAmount = amount * PROFIT_MULTIPLIER;
     user.profit += profitAmount;
     user.total_won += 1;
+    persistDB();
     return { success: true, profit: profitAmount, message: 'Trade Won! Profit added.' };
   } else {
     user.capital -= amount;
     user.total_loss += 1;
+    persistDB();
     return { success: false, profit: -amount, message: 'Trade Lost. Capital deducted.' };
   }
 };
@@ -212,6 +271,7 @@ export const adminAdjustFunds = (userId: string, wallet: WalletType, amount: num
   } else {
     user[wallet] += amount;
   }
+  persistDB();
   return user;
 };
 
@@ -241,6 +301,7 @@ export const transferFunds = (userId: string, from: WalletType, to: WalletType, 
     };
     
     TRANSACTIONS.unshift(newTx);
+    persistDB();
     return newTx;
 };
 
@@ -258,6 +319,7 @@ export const createNFT = (userId: string, name: string, ethAmount: number, image
   };
   
   user.nfts.push(newNFT);
+  persistDB();
   return newNFT;
 };
 
@@ -287,6 +349,7 @@ export const submitKYC = (userId: string, data: any) => {
       submittedAt: new Date().toISOString()
   };
   
+  persistDB();
   return user;
 };
 
@@ -294,6 +357,7 @@ export const updateKYCStatus = (userId: string, status: KYCStatus) => {
   const user = USERS.find(u => u.id === userId);
   if (!user) throw new Error("User not found");
   user.kycStatus = status;
+  persistDB();
   return user;
 };
 
@@ -302,6 +366,7 @@ export const toggleUserStatus = (userId: string, status: AccountStatus) => {
     const user = USERS.find(u => u.id === userId);
     if (!user) throw new Error("User not found");
     user.status = status;
+    persistDB();
     return user;
 }
 
@@ -312,8 +377,12 @@ export const verifyWithdrawalPassword = (userId: string, pin: string): boolean =
 };
 
 // 7. Transaction Logic
-export const getPendingTransactions = () => TRANSACTIONS.filter(t => t.status === 'PENDING');
+export const getPendingTransactions = () => {
+    forceUpdate(); // Re-read from storage to get latest
+    return TRANSACTIONS.filter(t => t.status === 'PENDING');
+};
 export const getUserTransactions = (userId: string) => {
+    forceUpdate(); // Re-read from storage
     return TRANSACTIONS.filter(t => t.userId === userId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
@@ -333,6 +402,7 @@ export const createTransaction = (userId: string, type: 'DEPOSIT' | 'WITHDRAWAL'
   };
   
   TRANSACTIONS.unshift(newTx);
+  persistDB();
   return newTx;
 };
 
@@ -359,6 +429,7 @@ export const processTransaction = (txId: string, action: 'APPROVE' | 'REJECT') =
             }
         }
     }
+    persistDB();
     return tx;
 }
 
@@ -443,17 +514,186 @@ export const subscribeToInvestment = (userId: string, packageId: string, amount:
         date: startDate.toISOString().slice(0, 16).replace('T', ' ')
     };
     TRANSACTIONS.unshift(newTx);
+    persistDB();
 
     return newInvestment;
 };
 
+// 10. Chat Logic
+export const getChatSession = (userId: string): ChatSession => {
+    forceUpdate(); // Ensure we have latest chats
+    let session = CHAT_SESSIONS.find(s => s.userId === userId);
+    if (!session) {
+        const user = USERS.find(u => u.id === userId);
+        session = {
+            userId,
+            userName: user?.name || 'Unknown User',
+            messages: [
+                {
+                    id: 'msg-init',
+                    senderId: 'BOT',
+                    message: 'Hello! I am your AI assistant. How can I help you today?',
+                    timestamp: new Date().toISOString(),
+                    type: 'BOT'
+                }
+            ],
+            status: 'ACTIVE',
+            lastMessageAt: new Date().toISOString(),
+            hasUnreadAdminMessage: false
+        };
+        CHAT_SESSIONS.push(session);
+        persistDB();
+    }
+    return session;
+};
+
+export const sendChatMessage = async (userId: string, message: string, isIssue: boolean = false) => {
+    const session = getChatSession(userId);
+    
+    // Add User Message
+    const userMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        senderId: userId,
+        message,
+        timestamp: new Date().toISOString(),
+        type: 'USER',
+        isIssue
+    };
+    session.messages.push(userMsg);
+    session.lastMessageAt = new Date().toISOString();
+
+    let shouldEscalate = isIssue;
+    let escalationReason = isIssue ? "User manually flagged as issue" : "";
+    let aiReply = "I'm sorry, I'm having trouble connecting to my brain right now.";
+
+    if (session.status === 'ESCALATED') {
+        // Already escalated, don't use AI, just acknowledge
+        aiReply = "Your issue is currently being reviewed by a human agent. They will respond here shortly.";
+    } else if (isIssue) {
+        aiReply = "I have logged your issue and notified a support agent. They will get back to you shortly.";
+    } else {
+        // AI Response for general queries
+        try {
+            if (ai) {
+                const result = await ai.models.generateContent({
+                    model: "gemini-2.0-flash-exp",
+                    contents: `User message: "${message}"\n\nContext: You are a support agent for ScalperHub crypto platform. Be helpful and concise. If the user is reporting a bug, missing funds, payment issue, or explicitly asking for a human/admin, you MUST set escalate to true.`,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.OBJECT,
+                            properties: {
+                                reply: { type: Type.STRING, description: "Your response to the user" },
+                                escalate: { type: Type.BOOLEAN, description: "True if this needs human admin attention" },
+                                reason: { type: Type.STRING, description: "Reason for escalation, if escalate is true" }
+                            },
+                            required: ["reply", "escalate"]
+                        }
+                    }
+                });
+                const data = JSON.parse(result.text || "{}");
+                aiReply = data.reply || "I will help you with that.";
+                if (data.escalate) {
+                    shouldEscalate = true;
+                    escalationReason = data.reason || "AI detected a complaint requiring admin attention.";
+                }
+            } else {
+                 // Fallback if no API key
+                 const responses = [
+                    "I can help with that. Could you provide more details?",
+                    "That's an interesting question about our platform.",
+                    "You can find more info in the Settings tab.",
+                    "Please check the Market page for live rates."
+                 ];
+                 aiReply = responses[Math.floor(Math.random() * responses.length)];
+            }
+        } catch (error) {
+            console.error("AI Error:", error);
+            aiReply = "I'm currently experiencing high traffic. Please try again later.";
+        }
+    }
+
+    const botMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        senderId: 'BOT',
+        message: aiReply,
+        timestamp: new Date().toISOString(),
+        type: 'BOT'
+    };
+    session.messages.push(botMsg);
+
+    if (shouldEscalate && session.status !== 'ESCALATED') {
+        session.status = 'ESCALATED';
+        SUPPORT_LOGS.unshift({
+            id: `log-${Date.now()}`,
+            userId: userId,
+            user: session.userName,
+            msg: escalationReason || message,
+            time: new Date().toISOString(),
+            type: 'COMPLAINT'
+        });
+    }
+    
+    persistDB();
+    return session;
+};
+
+export const adminGetChatSessions = () => {
+    forceUpdate(); // Re-read from storage
+    return CHAT_SESSIONS.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+};
+
+export const adminReplyToChat = (userId: string, message: string) => {
+    const session = CHAT_SESSIONS.find(s => s.userId === userId);
+    if (!session) throw new Error("Chat session not found");
+
+    const adminMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        senderId: 'ADMIN',
+        message,
+        timestamp: new Date().toISOString(),
+        type: 'ADMIN'
+    };
+    
+    session.messages.push(adminMsg);
+    session.lastMessageAt = new Date().toISOString();
+    session.hasUnreadAdminMessage = true;
+    session.status = 'RESOLVED'; // Admin reply resolves escalation usually, or keeps it active
+    
+    persistDB();
+    return session;
+};
+
+export const markChatRead = (userId: string) => {
+    const session = CHAT_SESSIONS.find(s => s.userId === userId);
+    if (session) {
+        session.hasUnreadAdminMessage = false;
+        persistDB();
+    }
+};
+
 // --- DATA ACCESSORS ---
-export const getUser = (id: string) => USERS.find(u => u.id === id);
-export const getAllUsers = () => USERS;
+export const getUser = (id: string) => {
+    forceUpdate();
+    return USERS.find(u => u.id === id);
+};
+export const getAllUsers = () => {
+    forceUpdate();
+    return [...USERS];
+}; // Return a copy to trigger React state updates if reference changes, but here we want latest data.
+// Actually, for the admin panel to see updates, we need to ensure we are returning the live array or a fresh copy of the live data.
+// Since USERS is a module-level variable, returning it directly works, but React might not detect changes if the reference is the same.
+// However, in AdminPanel we are doing setUsers(getAllUsers()...). filter() creates a new array, so React WILL update.
+
+// The issue might be that USERS isn't being updated correctly across modules? No, it's a singleton module.
+// Let's ensure registerUser pushes to the SAME USERS array. It does.
+
+// Let's add a helper to force a "db refresh" simulation if needed, but the polling in AdminPanel should handle it.
+// export const forceUpdate = () => {}; // REMOVED DUPLICATE
+
 export const getCurrentUser = () => USERS[0]; // Simulating logged in user
-export const getAdminUser = () => USERS.find(u => u.role === 'ADMIN') || USERS[1]; // Simulating logged in admin
-export const getSupportLogs = () => [
-    { id: 1, user: 'Alex Trader', msg: 'Why is my withdrawal pending?', time: '10m ago', type: 'COMPLAINT' },
-    { id: 2, user: 'System', msg: 'Bot #442 detected arbitrage attempt.', time: '1h ago', type: 'ALERT' },
-    { id: 3, user: 'Sarah Whale', msg: 'I cannot access my NFT gallery.', time: '2h ago', type: 'SUPPORT' },
-];
+export const getAdminUser = () => USERS.find(u => u.role === 'ADMIN') || USERS[2]; // Simulating logged in admin (index 2 is admin-1)
+export const getSupportLogs = () => {
+    forceUpdate();
+    return [...SUPPORT_LOGS];
+};

@@ -20,19 +20,22 @@ import {
   PieChart
 } from 'lucide-react';
 import { View, User, KYCStatus } from '../types';
+import ChatWidget from './ChatWidget';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   currentView: View;
   setCurrentView: (view: View) => void;
   currentUser: User;
+  onLogout: () => void;
 }
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
   children, 
   currentView, 
   setCurrentView,
-  currentUser 
+  currentUser,
+  onLogout
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const userRole = currentUser.role;
@@ -135,7 +138,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
         {/* Sidebar Footer (Logout) */}
         <div className="p-4 border-t border-[#1e293b]">
-             <button className="flex items-center gap-3 text-gray-400 hover:text-white transition w-full px-2 py-2">
+             <button 
+                onClick={onLogout}
+                className="flex items-center gap-3 text-gray-400 hover:text-white transition w-full px-2 py-2"
+             >
                 <LogOut size={18} />
                 <span className="text-sm font-medium">Logout</span>
              </button>
@@ -190,6 +196,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         <main className="flex-1 overflow-auto bg-[#0b1120] text-white">
           {children}
         </main>
+        
+        {/* Global Chat Widget */}
+        <ChatWidget userId={currentUser.id} />
       </div>
     </div>
   );
