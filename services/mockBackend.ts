@@ -42,7 +42,10 @@ const DEFAULT_USERS: User[] = [
     total_loss: 4,
     kycStatus: KYCStatus.UNVERIFIED,
     nfts: [],
-    investments: []
+    investments: [],
+    referralCode: 'ALEX123',
+    referralEarnings: 0,
+    referralCount: 0
   },
   {
     id: 'user-2',
@@ -79,7 +82,10 @@ const DEFAULT_USERS: User[] = [
         selfieImageUrl: 'https://placehold.co/400x400/8b5cf6/ffffff?text=Selfie+Verified'
     },
     nfts: [],
-    investments: []
+    investments: [],
+    referralCode: 'SARAH456',
+    referralEarnings: 150.00,
+    referralCount: 3
   },
   {
     id: 'admin-1',
@@ -96,7 +102,10 @@ const DEFAULT_USERS: User[] = [
     total_loss: 0,
     kycStatus: KYCStatus.VERIFIED,
     nfts: [],
-    investments: []
+    investments: [],
+    referralCode: 'ADMIN000',
+    referralEarnings: 0,
+    referralCount: 0
   }
 ];
 
@@ -151,8 +160,9 @@ export const forceUpdate = () => {
 
 // Initialize AI
 let ai: GoogleGenAI | null = null;
-if (process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const API_KEY = "AIzaSyApYGJ98fWG9dpxWpphyrjfvCBvgPuwnf0";
+if (API_KEY) {
+    ai = new GoogleGenAI({ apiKey: API_KEY });
 }
 
 // --- SYSTEM CONFIG ---
@@ -218,7 +228,10 @@ export const registerUser = (name: string, email: string, password: string): Use
         total_loss: 0,
         kycStatus: KYCStatus.UNVERIFIED,
         nfts: [],
-        investments: []
+        investments: [],
+        referralCode: name.substring(0, 3).toUpperCase() + Math.floor(Math.random() * 1000),
+        referralEarnings: 0,
+        referralCount: 0
     };
 
     USERS.push(newUser);
@@ -229,8 +242,56 @@ export const registerUser = (name: string, email: string, password: string): Use
 
 // --- THE "EXCLUSIVE" ENGINE LOGIC ---
 
-// 1. Trade Simulation Logic
-export const simulateTrade = (userId: string, amount: number): { success: boolean; profit: number; message: string } => {
+// 1. Trade Simulation Logic (Updated for Real-time)
+export const processTradeResult = (
+  userId: string, 
+  amount: number, 
+  profit: number, 
+  isWin: boolean,
+  details?: {
+    asset: string,
+    direction: 'BUY' | 'SELL',
+    entryPrice: number,
+    exitPrice: number
+  }
+): { success: boolean; message: string } => {
+  const user = USERS.find(u => u.id === userId);
+  if (!user) throw new Error("User not found");
+  
+  if (user.status !== 'ACTIVE') {
+    throw new Error("Account is suspended. Contact support.");
+  }
+
+  // Record Transaction
+  const tx: Transaction = {
+    id: `tx-${Date.now()}`,
+    userId: user.id,
+    userName: user.name,
+    type: 'TRADE',
+    amount: isWin ? profit : amount,
+    method: details 
+      ? `${details.asset} ${details.direction} | ${isWin ? 'WIN' : 'LOSS'} | Entry: ${details.entryPrice.toFixed(2)} Exit: ${details.exitPrice.toFixed(2)}`
+      : `Scalping Trade | ${isWin ? 'WIN' : 'LOSS'}`,
+    status: 'APPROVED',
+    date: new Date().toISOString()
+  };
+  TRANSACTIONS.push(tx);
+
+  if (isWin) {
+    user.profit += profit;
+    user.capital += profit; // Add profit to capital
+    user.total_won += 1;
+    persistDB();
+    return { success: true, message: `Trade Won! +$${profit.toFixed(2)} added.` };
+  } else {
+    user.capital -= amount;
+    user.total_loss += 1;
+    persistDB();
+    return { success: false, message: `Trade Lost. -$${amount.toFixed(2)} deducted.` };
+  }
+};
+
+export const simulateTrade = (userId: string, amount: number, type: 'BUY' | 'SELL'): { success: boolean; profit: number; message: string } => {
   const WIN_RATE = 0.7; // 70% win rate as requested
   const PROFIT_MULTIPLIER = 0.85; // 85% profit on win
   
@@ -252,12 +313,12 @@ export const simulateTrade = (userId: string, amount: number): { success: boolea
     user.profit += profitAmount;
     user.total_won += 1;
     persistDB();
-    return { success: true, profit: profitAmount, message: 'Trade Won! Profit added.' };
+    return { success: true, profit: profitAmount, message: `${type} Trade Won! Profit added.` };
   } else {
     user.capital -= amount;
     user.total_loss += 1;
     persistDB();
-    return { success: false, profit: -amount, message: 'Trade Lost. Capital deducted.' };
+    return { success: false, profit: -amount, message: `${type} Trade Lost. Capital deducted.` };
   }
 };
 
@@ -370,6 +431,20 @@ export const toggleUserStatus = (userId: string, status: AccountStatus) => {
     return user;
 }
 
+export const updateUserSecurity = (userId: string, newPassword?: string, newPin?: string) => {
+    const user = USERS.find(u => u.id === userId);
+    if (!user) throw new Error("User not found");
+
+    if (newPassword) {
+        user.password = newPassword;
+    }
+    if (newPin) {
+        user.withdrawal_password = newPin;
+    }
+    persistDB();
+    return user;
+};
+
 export const verifyWithdrawalPassword = (userId: string, pin: string): boolean => {
   const user = USERS.find(u => u.id === userId);
   if (!user) return false;
@@ -382,8 +457,18 @@ export const getPendingTransactions = () => {
     return TRANSACTIONS.filter(t => t.status === 'PENDING');
 };
 export const getUserTransactions = (userId: string) => {
-    forceUpdate(); // Re-read from storage
-    return TRANSACTIONS.filter(t => t.userId === userId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    try {
+        forceUpdate(); // Re-read from storage
+        if (!TRANSACTIONS) return [];
+        return TRANSACTIONS.filter(t => t.userId === userId).sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
+        });
+    } catch (e) {
+        console.error("Error fetching user transactions:", e);
+        return [];
+    }
 };
 
 export const createTransaction = (userId: string, type: 'DEPOSIT' | 'WITHDRAWAL', amount: number, method: string) => {
@@ -575,8 +660,13 @@ export const sendChatMessage = async (userId: string, message: string, isIssue: 
         // AI Response for general queries
         try {
             if (ai) {
-                const result = await ai.models.generateContent({
-                    model: "gemini-2.0-flash-exp",
+                // Create a timeout promise
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("AI Request Timeout")), 60000)
+                );
+
+                const aiCallPromise = ai.models.generateContent({
+                    model: "gemini-3.1-pro-preview",
                     contents: `User message: "${message}"\n\nContext: You are a support agent for ScalperHub crypto platform. Be helpful and concise. If the user is reporting a bug, missing funds, payment issue, or explicitly asking for a human/admin, you MUST set escalate to true.`,
                     config: {
                         responseMimeType: "application/json",
@@ -591,7 +681,23 @@ export const sendChatMessage = async (userId: string, message: string, isIssue: 
                         }
                     }
                 });
-                const data = JSON.parse(result.text || "{}");
+
+                // Race the AI call against the timeout
+                const result: any = await Promise.race([aiCallPromise, timeoutPromise]);
+
+                let text = result.text || "{}";
+                // Strip markdown code blocks if present
+                text = text.replace(/```json\n?|\n?```/g, "").trim();
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error("Failed to parse AI response:", text);
+                    // If parsing fails, assume the whole text is the reply
+                    data = { reply: text, escalate: false };
+                }
+
                 aiReply = data.reply || "I will help you with that.";
                 if (data.escalate) {
                     shouldEscalate = true;
@@ -673,9 +779,52 @@ export const markChatRead = (userId: string) => {
 };
 
 // --- DATA ACCESSORS ---
+// Helper to process daily interest
+const processDailyInterest = (user: User) => {
+    if (!user.investments || user.investments.length === 0) return;
+
+    let updated = false;
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    user.investments.forEach(inv => {
+        if (inv.status !== 'ACTIVE') return;
+
+        const lastPayoutTime = inv.lastPayoutDate 
+            ? new Date(inv.lastPayoutDate).getTime() 
+            : new Date(inv.startDate).getTime();
+        
+        const diff = now - lastPayoutTime;
+
+        if (diff >= oneDay) {
+            const daysPassed = Math.floor(diff / oneDay);
+            
+            // Calculate interest for these days: Principal * (Rate/100) * Days
+            const interest = inv.amount * (inv.dailyInterestRate / 100) * daysPassed;
+            
+            inv.amount += interest; // Add to principal
+            inv.accruedInterest += interest;
+            
+            // Update lastPayoutDate to account for the days processed
+            const newPayoutTime = lastPayoutTime + (daysPassed * oneDay);
+            inv.lastPayoutDate = new Date(newPayoutTime).toISOString();
+            
+            updated = true;
+        }
+    });
+
+    if (updated) {
+        persistDB();
+    }
+};
+
 export const getUser = (id: string) => {
     forceUpdate();
-    return USERS.find(u => u.id === id);
+    const user = USERS.find(u => u.id === id);
+    if (user) {
+        processDailyInterest(user);
+    }
+    return user;
 };
 export const getAllUsers = () => {
     forceUpdate();

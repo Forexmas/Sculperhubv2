@@ -1,61 +1,81 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Globe, TrendingUp, TrendingDown, Star, Search, ArrowRight } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
+import { ArrowUp, ArrowDown, Search, Globe } from 'lucide-react';
 
 interface MarketModuleProps {
   user: User;
   refreshUser: () => void;
+  onNavigate: (view: View) => void;
 }
 
-// Mock Market Data
-const MOCK_MARKET = [
-  { id: 'btc', name: 'Bitcoin', symbol: 'BTC', price: 70406.20, change24h: 2.45, volume: '45.2B', marketCap: '1.3T', sparkline: [68000, 69000, 68500, 70000, 69800, 70406] },
-  { id: 'eth', name: 'Ethereum', symbol: 'ETH', price: 3505.10, change24h: -1.20, volume: '15.8B', marketCap: '420B', sparkline: [3600, 3550, 3580, 3490, 3520, 3505] },
-  { id: 'sol', name: 'Solana', symbol: 'SOL', price: 145.30, change24h: 5.67, volume: '3.2B', marketCap: '65B', sparkline: [135, 138, 142, 140, 144, 145.3] },
-  { id: 'bnb', name: 'BNB', symbol: 'BNB', price: 590.45, change24h: 0.85, volume: '1.1B', marketCap: '88B', sparkline: [580, 585, 582, 588, 591, 590.45] },
-  { id: 'xrp', name: 'Ripple', symbol: 'XRP', price: 0.62, change24h: -0.45, volume: '800M', marketCap: '34B', sparkline: [0.63, 0.62, 0.64, 0.61, 0.62, 0.62] },
-  { id: 'ada', name: 'Cardano', symbol: 'ADA', price: 0.45, change24h: 1.12, volume: '400M', marketCap: '16B', sparkline: [0.43, 0.44, 0.43, 0.45, 0.44, 0.45] },
-  { id: 'doge', name: 'Dogecoin', symbol: 'DOGE', price: 0.15, change24h: 8.40, volume: '1.5B', marketCap: '21B', sparkline: [0.13, 0.14, 0.13, 0.15, 0.14, 0.15] },
-  { id: 'dot', name: 'Polkadot', symbol: 'DOT', price: 7.20, change24h: -2.10, volume: '250M', marketCap: '10B', sparkline: [7.5, 7.4, 7.3, 7.1, 7.2, 7.2] },
-];
-
-const MiniChart = ({ data, isPositive }: { data: number[], isPositive: boolean }) => {
-    const chartData = data.map((val, i) => ({ time: i, value: val }));
-    const color = isPositive ? '#10b981' : '#ef4444';
-    
-    return (
-        <div className="h-10 w-24">
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                    <defs>
-                        <linearGradient id={`color-${isPositive}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor={color} stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
-                    <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fillOpacity={1} fill={`url(#color-${isPositive})`} isAnimationActive={false} />
-                </AreaChart>
-            </ResponsiveContainer>
-        </div>
-    );
-};
-
-const MarketModule: React.FC<MarketModuleProps> = ({ user }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [favorites, setFavorites] = useState<string[]>(['btc', 'eth', 'sol']);
-
-  const toggleFavorite = (id: string) => {
-      if (favorites.includes(id)) {
-          setFavorites(favorites.filter(f => f !== id));
-      } else {
-          setFavorites([...favorites, id]);
-      }
+interface CoinData {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string;
+  current_price: number;
+  price_change_percentage_24h: number;
+  market_cap: number;
+  total_volume: number;
+  sparkline_in_7d: {
+    price: number[];
   };
+}
 
-  const filteredMarket = MOCK_MARKET.filter(coin => 
-      coin.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      coin.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+import { View } from '../types';
+
+const MarketModule: React.FC<MarketModuleProps> = ({ user, onNavigate }) => {
+  const [coins, setCoins] = useState<CoinData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const fetchCoins = async () => {
+      try {
+        const response = await fetch(
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=true&price_change_percentage=24h'
+        );
+        
+        if (!response.ok) {
+            throw new Error('Rate limit or error');
+        }
+        
+        const data = await response.json();
+        setCoins(data);
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch market data, using fallback", err);
+        setError(true);
+        // Fallback mock data generation
+        const mockData: CoinData[] = Array.from({ length: 20 }).map((_, i) => ({
+            id: `coin-${i}`,
+            symbol: ['btc', 'eth', 'usdt', 'bnb', 'sol', 'xrp', 'usdc', 'ada', 'avax', 'doge', 'dot', 'trx', 'link', 'matic', 'wbtc', 'uni', 'ltc', 'dai', 'bch', 'atom'][i] || `COIN${i}`,
+            name: ['Bitcoin', 'Ethereum', 'Tether', 'BNB', 'Solana', 'XRP', 'USDC', 'Cardano', 'Avalanche', 'Dogecoin', 'Polkadot', 'TRON', 'Chainlink', 'Polygon', 'Wrapped Bitcoin', 'Uniswap', 'Litecoin', 'Dai', 'Bitcoin Cash', 'Cosmos'][i] || `Coin ${i}`,
+            image: `https://picsum.photos/seed/${i}/32/32`, 
+            current_price: Math.random() * 1000 + 10,
+            price_change_percentage_24h: (Math.random() * 20) - 10,
+            market_cap: Math.random() * 1000000000,
+            total_volume: Math.random() * 100000000,
+            sparkline_in_7d: {
+                price: Array.from({ length: 20 }).map(() => Math.random() * 100 + 50)
+            }
+        }));
+        setCoins(mockData);
+        setLoading(false);
+      }
+    };
+
+    fetchCoins();
+    // Refresh every 60 seconds to avoid rate limits
+    const interval = setInterval(fetchCoins, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredCoins = coins.filter(coin => 
+    coin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    coin.symbol.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -73,90 +93,99 @@ const MarketModule: React.FC<MarketModuleProps> = ({ user }) => {
             <input 
                 type="text" 
                 placeholder="Search coin..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-[#1e293b] border border-[#334155] rounded-lg pl-10 pr-4 py-2 text-white focus:border-blue-500 outline-none"
             />
         </div>
       </div>
 
-      <div className="bg-[#1e293b] border border-[#334155] rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+      {loading ? (
+        <div className="w-full h-96 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500"></div>
+        </div>
+      ) : (
+        <div className="bg-[#1e293b] border border-[#334155] rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-left">
                 <thead className="bg-[#0f172a] border-b border-[#334155] text-xs uppercase text-gray-500 font-bold">
-                    <tr>
-                        <th className="p-4 w-12"></th>
-                        <th className="p-4">Asset</th>
-                        <th className="p-4 text-right">Price</th>
-                        <th className="p-4 text-right">24h Change</th>
-                        <th className="p-4 text-right hidden md:table-cell">24h Volume</th>
-                        <th className="p-4 text-right hidden lg:table-cell">Market Cap</th>
-                        <th className="p-4 text-center hidden sm:table-cell">Last 7 Days</th>
-                        <th className="p-4 text-right">Action</th>
-                    </tr>
+                <tr>
+                    <th className="p-4">Asset</th>
+                    <th className="p-4 text-right">Price</th>
+                    <th className="p-4 text-right">24h Change</th>
+                    <th className="p-4 text-right hidden md:table-cell">Market Cap</th>
+                    <th className="p-4 text-right hidden lg:table-cell">Last 7 Days</th>
+                    <th className="p-4 text-right">Action</th>
+                </tr>
                 </thead>
                 <tbody className="divide-y divide-[#334155] text-sm">
-                    {filteredMarket.map((coin) => {
-                        const isPositive = coin.change24h >= 0;
-                        const isFav = favorites.includes(coin.id);
-
-                        return (
-                            <tr key={coin.id} className="hover:bg-white/5 transition group">
-                                <td className="p-4 text-center">
-                                    <button onClick={() => toggleFavorite(coin.id)} className="text-gray-500 hover:text-yellow-500 transition">
-                                        <Star size={18} className={isFav ? 'fill-yellow-500 text-yellow-500' : ''} />
-                                    </button>
-                                </td>
-                                <td className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-[#0f172a] flex items-center justify-center font-bold text-xs border border-[#334155]">
-                                            {coin.symbol[0]}
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-white">{coin.name}</div>
-                                            <div className="text-xs text-gray-500">{coin.symbol}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="p-4 text-right font-mono text-white">
-                                    ${coin.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 6})}
-                                </td>
-                                <td className="p-4 text-right">
-                                    <span className={`inline-flex items-center gap-1 font-bold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                                        {isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                        {Math.abs(coin.change24h)}%
-                                    </span>
-                                </td>
-                                <td className="p-4 text-right text-gray-400 hidden md:table-cell">
-                                    ${coin.volume}
-                                </td>
-                                <td className="p-4 text-right text-gray-400 hidden lg:table-cell">
-                                    ${coin.marketCap}
-                                </td>
-                                <td className="p-4 hidden sm:table-cell">
-                                    <div className="flex justify-center">
-                                        <MiniChart data={coin.sparkline} isPositive={isPositive} />
-                                    </div>
-                                </td>
-                                <td className="p-4 text-right">
-                                    <button className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded transition font-medium text-xs">
-                                        Trade
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                {filteredCoins.map((coin) => (
+                    <tr key={coin.id} className="hover:bg-white/5 transition group">
+                    <td className="p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[#0f172a] flex items-center justify-center font-bold text-xs border border-[#334155] overflow-hidden">
+                                {error ? (
+                                    (coin.symbol?.[0] || '?').toUpperCase()
+                                ) : (
+                                    <img src={coin.image} alt={coin.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                )}
+                            </div>
+                            <div>
+                                <div className="font-bold text-white">{coin.name}</div>
+                                <div className="text-xs text-gray-500 uppercase">{coin.symbol}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td className="p-4 text-right font-mono text-white">
+                        ${coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
+                    </td>
+                    <td className="p-4 text-right">
+                        <span className={`inline-flex items-center gap-1 font-bold ${coin.price_change_percentage_24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {coin.price_change_percentage_24h >= 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                            {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
+                        </span>
+                    </td>
+                    <td className="p-4 text-right text-gray-400 hidden md:table-cell">
+                        ${coin.market_cap.toLocaleString()}
+                    </td>
+                    <td className="p-4 hidden lg:table-cell">
+                        <div className="h-10 w-32 ml-auto">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={(coin.sparkline_in_7d?.price || []).map((p, i) => ({ i, p }))}>
+                                    <Line 
+                                        type="monotone" 
+                                        dataKey="p" 
+                                        stroke={coin.price_change_percentage_24h >= 0 ? '#10b981' : '#ef4444'} 
+                                        strokeWidth={2} 
+                                        dot={false} 
+                                    />
+                                    <YAxis domain={['dataMin', 'dataMax']} hide />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </td>
+                    <td className="p-4 text-right">
+                        <button 
+                            onClick={() => onNavigate('TRADING')}
+                            className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded transition font-medium text-xs"
+                        >
+                            Trade
+                        </button>
+                    </td>
+                    </tr>
+                ))}
                 </tbody>
             </table>
             
-            {filteredMarket.length === 0 && (
+            {filteredCoins.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
                     <Search size={48} className="mx-auto mb-4 opacity-20" />
-                    <p>No coins found matching "{searchQuery}"</p>
+                    <p>No coins found matching "{searchTerm}"</p>
                 </div>
             )}
+            </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

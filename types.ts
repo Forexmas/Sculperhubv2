@@ -59,6 +59,12 @@ export interface User {
   // Relations
   nfts: NFT[];
   investments: UserInvestment[];
+  
+  // Referral System
+  referralCode: string;
+  referredBy?: string;
+  referralEarnings: number;
+  referralCount: number;
 }
 
 export interface NFT {
@@ -87,11 +93,12 @@ export interface UserInvestment {
   dailyInterestRate: number;
   status: 'ACTIVE' | 'COMPLETED';
   accruedInterest: number;
+  lastPayoutDate?: string; // Track last time interest was added
 }
 
 export type WalletType = 'profit' | 'bonus' | 'capital' | 'accumulating_balance';
 
-export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'INVESTMENT';
+export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'INVESTMENT' | 'TRADE';
 export type TransactionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface Transaction {
@@ -118,7 +125,7 @@ export type View =
   | 'WITHDRAWAL'
   | 'INVESTMENT'
   | 'HISTORY'
-  | 'SIGNAL'
+  | 'REFERRAL'
   | 'SETTINGS';
 
 export interface ChatMessage {

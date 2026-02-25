@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getUserTransactions } from '../services/mockBackend';
 import { User, Transaction } from '../types';
-import { History, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Briefcase } from 'lucide-react';
+import { History, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Briefcase, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface HistoryModuleProps {
   user: User;
@@ -10,7 +10,7 @@ interface HistoryModuleProps {
 
 const HistoryModule: React.FC<HistoryModuleProps> = ({ user }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filter, setFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'INVESTMENT'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'INVESTMENT' | 'TRADE'>('ALL');
 
   useEffect(() => {
     setTransactions(getUserTransactions(user.id));
@@ -18,12 +18,15 @@ const HistoryModule: React.FC<HistoryModuleProps> = ({ user }) => {
 
   const filteredTransactions = transactions.filter(t => filter === 'ALL' || t.type === filter);
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, method?: string) => {
     switch (type) {
       case 'DEPOSIT': return <ArrowDownLeft className="text-green-500" />;
       case 'WITHDRAWAL': return <ArrowUpRight className="text-red-500" />;
       case 'TRANSFER': return <ArrowRightLeft className="text-blue-500" />;
       case 'INVESTMENT': return <Briefcase className="text-purple-500" />;
+      case 'TRADE': 
+        if (method?.includes('WIN')) return <TrendingUp className="text-emerald-500" />;
+        return <TrendingDown className="text-red-500" />;
       default: return <History className="text-gray-500" />;
     }
   };
@@ -38,12 +41,12 @@ const HistoryModule: React.FC<HistoryModuleProps> = ({ user }) => {
           <p className="text-gray-400 text-sm">View all your financial activities.</p>
         </div>
         
-        <div className="flex gap-2 bg-[#1e293b] p-1 rounded-lg">
-            {['ALL', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'INVESTMENT'].map((f) => (
+        <div className="flex gap-2 bg-[#1e293b] p-1 rounded-lg overflow-x-auto max-w-full">
+            {['ALL', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'INVESTMENT', 'TRADE'].map((f) => (
                 <button
                     key={f}
                     onClick={() => setFilter(f as any)}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition ${filter === f ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition whitespace-nowrap ${filter === f ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
                 >
                     {f}
                 </button>
@@ -64,7 +67,7 @@ const HistoryModule: React.FC<HistoryModuleProps> = ({ user }) => {
                         <tr>
                             <th className="p-4">Type</th>
                             <th className="p-4">Amount</th>
-                            <th className="p-4">Method / Details</th>
+                            <th className="p-4">Details</th>
                             <th className="p-4">Status</th>
                             <th className="p-4 text-right">Date</th>
                         </tr>
@@ -75,15 +78,19 @@ const HistoryModule: React.FC<HistoryModuleProps> = ({ user }) => {
                                 <td className="p-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-[#0f172a] border border-[#334155] flex items-center justify-center">
-                                            {getIcon(tx.type)}
+                                            {getIcon(tx.type, tx.method)}
                                         </div>
                                         <span className="font-bold text-white">{tx.type}</span>
                                     </div>
                                 </td>
-                                <td className="p-4 font-mono text-white">
-                                    ${tx.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                                <td className={`p-4 font-mono font-bold ${
+                                    tx.type === 'TRADE' 
+                                        ? (tx.method.includes('WIN') ? 'text-emerald-400' : 'text-red-400')
+                                        : 'text-white'
+                                }`}>
+                                    {tx.type === 'TRADE' && tx.method.includes('LOSS') ? '-' : '+'}${tx.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}
                                 </td>
-                                <td className="p-4 text-gray-400">
+                                <td className="p-4 text-gray-400 text-xs">
                                     {tx.method}
                                 </td>
                                 <td className="p-4">

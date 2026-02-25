@@ -10,16 +10,16 @@ import WithdrawalModule from './components/WithdrawalModule';
 import TransferModule from './components/TransferModule';
 import InvestmentModule from './components/InvestmentModule';
 import HistoryModule from './components/HistoryModule';
-import SignalModule from './components/SignalModule';
+import ReferralModule from './components/ReferralModule';
 import SettingsModule from './components/SettingsModule';
 import MarketModule from './components/MarketModule';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import LiveTradeFeed from './components/LiveTradeFeed';
+import TradingViewWidget from './components/TradingViewWidget';
 import { getCurrentUser, getAdminUser, getUser, getAllUsers } from './services/mockBackend';
 import { View, User } from './types';
 import { Wallet, ArrowRightLeft, Gift, TrendingUp, TrendingDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // Simple Ticker Component
 const TickerBar = () => (
@@ -46,65 +46,11 @@ const TickerBar = () => (
   </div>
 );
 
-// Dashboard Chart Component (Simplified for Dashboard View)
+// Dashboard Chart Component (Replaced with TradingView)
 const DashboardChart = () => {
-  const [data, setData] = useState<any[]>([]);
-  useEffect(() => {
-    // Generate dummy candlestick-like data for Area chart
-    const initialData = [];
-    let price = 70400;
-    for(let i=0; i<50; i++) {
-        price += (Math.random() - 0.5) * 50;
-        initialData.push({ time: i, price });
-    }
-    setData(initialData);
-  }, []);
-
   return (
-    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg p-4 mt-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-             <div className="flex items-center gap-2">
-                 <div className="bg-orange-500/20 p-1 rounded">
-                    <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
-                 </div>
-                 <span className="font-bold text-white">Bitcoin / U.S. Dollar</span>
-                 <span className="text-gray-500 text-xs">• 1 • Coinbase</span>
-             </div>
-             <div className="flex gap-2 text-xs text-gray-400">
-                 <button className="hover:text-white bg-[#1e293b] px-2 py-1 rounded">1m</button>
-                 <button className="hover:text-white px-2 py-1">30m</button>
-                 <button className="hover:text-white px-2 py-1">1h</button>
-             </div>
-        </div>
-        
-        {/* Price Stats Header inside Chart */}
-        <div className="flex gap-4 text-xs font-mono mb-4 border-b border-[#1e293b] pb-2">
-            <span className="text-red-500">O 70,437.99</span>
-            <span className="text-red-500">H 70,438.00</span>
-            <span className="text-red-500">L 70,384.01</span>
-            <span className="text-red-500">C 70,406.01</span>
-            <span className="text-red-500">-31.99 (-0.05%)</span>
-        </div>
-
-        <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data}>
-                    <defs>
-                        <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis domain={['auto', 'auto']} orientation="right" tick={{fill: '#64748b', fontSize: 10}} tickCount={5} />
-                    <Tooltip 
-                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }}
-                    />
-                    <Area type="monotone" dataKey="price" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
-                </AreaChart>
-            </ResponsiveContainer>
-        </div>
+    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg p-4 mt-6 h-[500px] flex flex-col overflow-hidden">
+        <TradingViewWidget symbol="BINANCE:BTCUSDT" />
     </div>
   );
 };
@@ -216,6 +162,12 @@ export default function App() {
         const totalTrades = currentUser.total_won + currentUser.total_loss;
         const winRate = totalTrades > 0 ? ((currentUser.total_won / totalTrades) * 100).toFixed(1) : '0.0';
 
+        // Find active investment
+        const activeInvestment = currentUser.investments.find(inv => inv.status === 'ACTIVE');
+        const planName = activeInvestment ? activeInvestment.packageName : "No Active Plan";
+        const planStatus = activeInvestment ? `Active | ${activeInvestment.dailyInterestRate}% Daily` : "Inactive";
+        const planValue = activeInvestment ? `$${activeInvestment.amount.toFixed(2)}` : "Start Investing";
+
         return (
           <div className="space-y-6">
             <TickerBar />
@@ -275,10 +227,16 @@ export default function App() {
                     {/* Row 2 Right: Crypto Plan */}
                     <StatCard 
                         title="Crypto Plan" 
-                        value="Silver"
-                        subValue="Package Status: active"
+                        value={planName}
+                        subValue={planStatus}
                         icon={Gift} 
                         variant="yellow"
+                        rightElement={activeInvestment && (
+                            <div className="text-right">
+                                <p className="text-xs text-black/60 font-bold">Principal</p>
+                                <p className="text-lg font-bold text-black">{planValue}</p>
+                            </div>
+                        )}
                     />
                 </div>
 
@@ -316,13 +274,13 @@ export default function App() {
       case 'TRANSFER':
         return <TransferModule user={currentUser} refreshUser={refreshData} />;
       case 'MARKET':
-        return <MarketModule user={currentUser} refreshUser={refreshData} />;
+        return <MarketModule user={currentUser} refreshUser={refreshData} onNavigate={setCurrentView} />;
       case 'INVESTMENT':
         return <InvestmentModule user={currentUser} refreshUser={refreshData} />;
       case 'HISTORY':
         return <HistoryModule user={currentUser} refreshUser={refreshData} />;
-      case 'SIGNAL':
-        return <SignalModule user={currentUser} refreshUser={refreshData} />;
+      case 'REFERRAL':
+        return <ReferralModule user={currentUser} refreshUser={refreshData} />;
       case 'SETTINGS':
         return <SettingsModule user={currentUser} refreshUser={refreshData} />;
       case 'ADMIN':

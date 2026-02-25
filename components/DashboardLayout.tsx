@@ -17,7 +17,8 @@ import {
   BarChart2,
   Signal,
   Globe,
-  PieChart
+  PieChart,
+  Users
 } from 'lucide-react';
 import { View, User, KYCStatus } from '../types';
 import ChatWidget from './ChatWidget';
@@ -49,7 +50,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     { id: 'WITHDRAWAL', label: 'Withdrawal', icon: Wallet, section: 'APPS' },
     { id: 'HISTORY', label: 'History', icon: History, section: 'APPS' },
     { id: 'TRADING', label: 'Scalping Trade', icon: TrendingUp, section: 'APPS' },
-    { id: 'SIGNAL', label: 'Signal', icon: Signal, section: 'APPS' },
+    { id: 'REFERRAL', label: 'Referral', icon: Users, section: 'APPS' },
     { id: 'KYC', label: 'AML / KYC', icon: ShieldCheck, section: 'APPS' }, // Changed icon to ShieldCheck to match screenshot vibe
     { id: 'SETTINGS', label: 'Settings', icon: Settings, section: 'APPS' },
   ];

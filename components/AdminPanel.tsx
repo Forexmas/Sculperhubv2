@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, adminAdjustFunds, updateKYCStatus, toggleUserStatus, getPendingTransactions, processTransaction, getSupportLogs, getDepositAddresses, updateDepositAddress, adminGetChatSessions, adminReplyToChat } from '../services/mockBackend';
+import { getAllUsers, adminAdjustFunds, updateKYCStatus, toggleUserStatus, getPendingTransactions, processTransaction, getSupportLogs, getDepositAddresses, updateDepositAddress, adminGetChatSessions, adminReplyToChat, getUserTransactions } from '../services/mockBackend';
 import { User, WalletType, KYCStatus, AccountStatus, Transaction, ChatSession } from '../types';
 import { Shield, Check, X, Users, DollarSign, MessageSquare, AlertTriangle, Lock, Unlock, Power, ArrowRight, ArrowDownLeft, ArrowUpRight, RotateCcw, FileText, Calendar, MapPin, CreditCard, User as UserIcon, Eye, Briefcase, Wallet, Mail, Phone, Settings, Save, Send } from 'lucide-react';
 
@@ -26,6 +26,10 @@ const AdminPanel: React.FC = () => {
 
   // Settings State
   const [adminAddresses, setAdminAddresses] = useState(getDepositAddresses());
+
+  // User Profile View State
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [viewingUserTransactions, setViewingUserTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     const fetchData = () => {
@@ -262,6 +266,21 @@ const AdminPanel: React.FC = () => {
                     </td>
                     <td className="p-4">
                         <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition">
+                            <button 
+                                onClick={() => {
+                                    try {
+                                        setViewingUser(user);
+                                        const txs = getUserTransactions(user.id);
+                                        setViewingUserTransactions(txs || []);
+                                    } catch (e) {
+                                        console.error("Error viewing profile:", e);
+                                        showMessage("Error loading profile data");
+                                    }
+                                }}
+                                className="px-2 py-1 bg-cyber-dark hover:bg-cyber-accent/20 border border-gray-700 hover:border-cyber-accent text-gray-300 hover:text-cyber-accent rounded text-xs transition flex items-center gap-1"
+                            >
+                                <Eye size={12} /> View Profile
+                            </button>
                             <button 
                                 onClick={() => { setSelectedUser(user.id); setTargetWallet('profit'); setFundAction('CREDIT'); }}
                                 className="px-2 py-1 bg-cyber-dark hover:bg-cyber-accent/20 border border-gray-700 hover:border-cyber-accent text-gray-300 hover:text-cyber-accent rounded text-xs transition flex items-center gap-1"
@@ -889,6 +908,169 @@ const AdminPanel: React.FC = () => {
                   </div>
               </div>
           </div>
+      )}
+
+      {/* User Profile Modal */}
+      {viewingUser && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-cyber-card border border-cyber-border rounded-xl w-full max-w-5xl shadow-2xl my-8 flex flex-col max-h-[90vh]">
+                <div className="p-6 border-b border-cyber-border flex justify-between items-center bg-cyber-dark sticky top-0 z-10 rounded-t-xl">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <UserIcon className="text-cyber-accent" /> User Profile: {viewingUser.name}
+                        </h3>
+                        <p className="text-sm text-gray-400">ID: {viewingUser.id} • Role: {viewingUser.role}</p>
+                    </div>
+                    <button 
+                        onClick={() => setViewingUser(null)}
+                        className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white"
+                    >
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-8">
+                    {/* Security & Access */}
+                    <div className="bg-cyber-dark/50 p-4 rounded-xl border border-cyber-border">
+                        <h4 className="text-sm font-bold text-cyber-accent uppercase mb-4 flex items-center gap-2">
+                            <Lock size={16} /> Security & Access Credentials
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="bg-black/40 p-3 rounded border border-cyber-border/50">
+                                <label className="text-xs text-gray-500 uppercase block mb-1">Email / Login</label>
+                                <div className="font-mono text-white select-all">{viewingUser.email}</div>
+                            </div>
+                            <div className="bg-black/40 p-3 rounded border border-cyber-border/50">
+                                <label className="text-xs text-gray-500 uppercase block mb-1">Login Password</label>
+                                <div className="font-mono text-red-400 select-all flex items-center gap-2">
+                                    {viewingUser.password} <Unlock size={12} />
+                                </div>
+                            </div>
+                            <div className="bg-black/40 p-3 rounded border border-cyber-border/50">
+                                <label className="text-xs text-gray-500 uppercase block mb-1">Withdrawal PIN</label>
+                                <div className="font-mono text-yellow-400 select-all flex items-center gap-2">
+                                    {viewingUser.withdrawal_password} <Lock size={12} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Financial Overview */}
+                    <div className="bg-cyber-dark/50 p-4 rounded-xl border border-cyber-border">
+                        <h4 className="text-sm font-bold text-green-400 uppercase mb-4 flex items-center gap-2">
+                            <Wallet size={16} /> Financial Overview
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="p-4 bg-cyber-card rounded-lg border border-cyber-border text-center">
+                                <div className="text-xs text-gray-500 uppercase mb-1">Capital</div>
+                                <div className="text-xl font-bold text-white">${viewingUser.capital.toFixed(2)}</div>
+                            </div>
+                            <div className="p-4 bg-cyber-card rounded-lg border border-cyber-border text-center">
+                                <div className="text-xs text-gray-500 uppercase mb-1">Profit</div>
+                                <div className="text-xl font-bold text-green-400">${viewingUser.profit.toFixed(2)}</div>
+                            </div>
+                            <div className="p-4 bg-cyber-card rounded-lg border border-cyber-border text-center">
+                                <div className="text-xs text-gray-500 uppercase mb-1">Bonus</div>
+                                <div className="text-xl font-bold text-purple-400">${viewingUser.bonus.toFixed(2)}</div>
+                            </div>
+                            <div className="p-4 bg-cyber-card rounded-lg border border-cyber-border text-center">
+                                <div className="text-xs text-gray-500 uppercase mb-1">Accumulating</div>
+                                <div className="text-xl font-bold text-blue-400">${viewingUser.accumulating_balance.toFixed(2)}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Active Investments */}
+                    <div className="bg-cyber-dark/50 p-4 rounded-xl border border-cyber-border">
+                        <h4 className="text-sm font-bold text-yellow-400 uppercase mb-4 flex items-center gap-2">
+                            <Briefcase size={16} /> Investment Packages
+                        </h4>
+                        {viewingUser.investments && viewingUser.investments.length > 0 ? (
+                            <div className="space-y-3">
+                                {viewingUser.investments.map((inv) => (
+                                    <div key={inv.id} className="bg-cyber-card p-4 rounded-lg border border-cyber-border flex justify-between items-center">
+                                        <div>
+                                            <div className="font-bold text-white">{inv.packageName}</div>
+                                            <div className="text-xs text-gray-400">
+                                                Started: {new Date(inv.startDate).toLocaleDateString()} • Rate: {inv.dailyInterestRate}% Daily
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-lg font-bold text-white">${inv.amount.toFixed(2)}</div>
+                                            <div className={`text-xs font-bold px-2 py-0.5 rounded inline-block ${inv.status === 'ACTIVE' ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'}`}>
+                                                {inv.status}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-gray-500 bg-black/20 rounded-lg border border-dashed border-gray-700">
+                                No investment history found.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Transaction History */}
+                    <div className="bg-cyber-dark/50 p-4 rounded-xl border border-cyber-border">
+                        <h4 className="text-sm font-bold text-blue-400 uppercase mb-4 flex items-center gap-2">
+                            <FileText size={16} /> Transaction & Trade History
+                        </h4>
+                        {viewingUserTransactions.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-black/40 text-xs text-gray-500 uppercase">
+                                        <tr>
+                                            <th className="p-3">Type</th>
+                                            <th className="p-3">Amount</th>
+                                            <th className="p-3">Details</th>
+                                            <th className="p-3">Status</th>
+                                            <th className="p-3 text-right">Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-cyber-border/50">
+                                        {viewingUserTransactions.map((tx) => (
+                                            <tr key={tx.id} className="hover:bg-white/5">
+                                                <td className="p-3 font-bold text-white">{tx.type}</td>
+                                                <td className={`p-3 font-mono ${tx.type === 'DEPOSIT' || (tx.type === 'TRADE' && tx.method.includes('WIN')) ? 'text-green-400' : 'text-red-400'}`}>
+                                                    ${tx.amount.toFixed(2)}
+                                                </td>
+                                                <td className="p-3 text-gray-400 text-xs">{tx.method}</td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                        tx.status === 'APPROVED' ? 'bg-green-500/20 text-green-400' :
+                                                        tx.status === 'REJECTED' ? 'bg-red-500/20 text-red-400' :
+                                                        'bg-yellow-500/20 text-yellow-400'
+                                                    }`}>
+                                                        {tx.status}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right text-gray-500 text-xs">
+                                                    {new Date(tx.date).toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-gray-500 bg-black/20 rounded-lg border border-dashed border-gray-700">
+                                No transaction history found.
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="p-6 border-t border-cyber-border bg-cyber-card rounded-b-xl sticky bottom-0 flex justify-end">
+                    <button 
+                        onClick={() => setViewingUser(null)}
+                        className="px-6 py-2 bg-cyber-dark hover:bg-white/10 border border-cyber-border rounded text-white transition"
+                    >
+                        Close Profile
+                    </button>
+                </div>
+            </div>
+        </div>
       )}
 
     </div>

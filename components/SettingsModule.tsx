@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { Settings, User as UserIcon, Lock, Bell, Shield, Wallet, Save, LogOut } from 'lucide-react';
+import { updateUserSecurity } from '../services/mockBackend';
 
 interface SettingsModuleProps {
   user: User;
@@ -26,15 +27,23 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ user }) => {
   };
 
   const handleSaveSecurity = () => {
-      if (newPassword !== confirmPassword) {
+      if (newPassword && newPassword !== confirmPassword) {
           setMessage('Passwords do not match.');
           return;
       }
-      setMessage('Security settings updated.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setWithdrawalPin('');
+      
+      try {
+          updateUserSecurity(user.id, newPassword || undefined, withdrawalPin || undefined);
+          setMessage('Security settings updated successfully.');
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setWithdrawalPin('');
+          refreshUser(); // Refresh user data in parent
+      } catch (e) {
+          setMessage('Failed to update security settings.');
+      }
+      
       setTimeout(() => setMessage(''), 3000);
   };
 

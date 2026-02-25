@@ -70,7 +70,8 @@ const WithdrawalModule: React.FC<WithdrawalModuleProps> = ({ user, refreshUser }
     }
 
     try {
-      createTransaction(user.id, 'WITHDRAWAL', amount, `${selectedAsset} (${network}) to ${address.substring(0,6)}...`);
+      // Pass the full address in the method string, clearly labeled
+      createTransaction(user.id, 'WITHDRAWAL', amount, `${selectedAsset} (${network}) | Address: ${address}`);
       setAmount(0);
       setPin('');
       setAddress('');
